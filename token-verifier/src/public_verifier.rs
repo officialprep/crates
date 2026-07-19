@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use pasetors::claims::ClaimsValidationRules;
 use pasetors::keys::AsymmetricPublicKey;
 use pasetors::token::UntrustedToken;
@@ -26,6 +28,42 @@ pub struct ImplTokenVerifierPasetoPublic {
 impl ImplTokenVerifierPasetoPublic {
     pub fn new(public_keys: HashMap<String, AsymmetricPublicKey<V4>>, id_cipher_ring: Arc<TokenIdCipherRing>) -> Self {
         Self { public_keys, id_cipher_ring }
+    }
+
+    /// Builds a verifier straight from two env vars — `public_keys_var`
+    /// (standard base64 `kid:key`, comma-separated) and `id_cipher_keys_var`
+    /// (hex `cid:key`, comma-separated). Lets a service wire this up in one
+    /// call instead of hand-rolling the same env-parsing loop every other
+    /// verify-only service already needs. Panics loudly on misconfiguration
+    /// rather than silently falling back to an unusable key.
+    pub fn from_env(public_keys_var: &str, id_cipher_keys_var: &str) -> Self {
+        let raw = std::env::var(public_keys_var).unwrap_or_else(|_| {
+            panic!("{public_keys_var} must be set to the public half of the issuer's signing keys")
+        });
+        let public_keys = Self::parse_public_keys(public_keys_var, &raw);
+        let id_cipher_ring = Arc::new(TokenIdCipherRing::from_env(id_cipher_keys_var));
+        Self::new(public_keys, id_cipher_ring)
+    }
+
+    fn parse_public_keys(var_name: &str, raw: &str) -> HashMap<String, AsymmetricPublicKey<V4>> {
+        let mut keys = HashMap::new();
+        for entry in raw.split(',') {
+            let (kid, base64_key) = entry
+                .split_once(':')
+                .unwrap_or_else(|| panic!("{var_name} entries must be `kid:base64key`, comma-separated"));
+            let bytes = STANDARD
+                .decode(base64_key)
+                .unwrap_or_else(|_| panic!("{var_name} key must be valid standard base64"));
+            let key = AsymmetricPublicKey::<V4>::from(&bytes)
+                .unwrap_or_else(|_| panic!("{var_name} key must be a 32-byte Ed25519 public key, base64-encoded"));
+            keys.insert(kid.to_string(), key);
+        }
+
+        if keys.is_empty() {
+            panic!("{var_name} must contain at least one entry");
+        }
+
+        keys
     }
 }
 

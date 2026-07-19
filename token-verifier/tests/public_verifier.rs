@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use pasetors::keys::AsymmetricPublicKey;
 use pasetors::version4::V4 as PasetorsV4;
 use rand_core::RngCore;
@@ -122,4 +124,56 @@ fn rejects_a_token_with_an_unknown_cipher_id() {
     let verifier = ImplTokenVerifierPasetoPublic::new(public_key_map("v1", &keypair), verifying_ring);
 
     assert!(verifier.verify(&token).is_err());
+}
+
+// SAFETY (env::set_var calls below): each test uses a var name unique to
+// that test, so concurrently-running tests never touch the same key —
+// no OnceLock/serialization needed to avoid races.
+
+#[test]
+fn from_env_builds_a_working_verifier_from_base64_and_hex_env_vars() {
+    let keypair = generate_keypair();
+    let cipher_key = generate_cipher_key();
+    let public_key_var = "TEST_FROM_ENV_PUBLIC_KEYS_1";
+    let cipher_key_var = "TEST_FROM_ENV_CIPHER_KEYS_1";
+
+    unsafe {
+        std::env::set_var(public_key_var, format!("v1:{}", STANDARD.encode(&keypair[32..])));
+        std::env::set_var(cipher_key_var, format!("c1:{}", hex::encode(cipher_key)));
+    }
+
+    let verifier = ImplTokenVerifierPasetoPublic::from_env(public_key_var, cipher_key_var);
+
+    let mut cipher_keys = HashMap::new();
+    cipher_keys.insert("c1".to_string(), cipher_key);
+    let issuing_ring = TokenIdCipherRing::new("c1".to_string(), cipher_keys);
+
+    let sub = Uuid::now_v7();
+    let token = issue_token(&keypair, "v1", sub, "access", &issuing_ring);
+
+    let claims = verifier.verify(&token).expect("token built from from_env-parsed keys should verify");
+    assert_eq!(claims.sub, sub);
+}
+
+#[test]
+#[should_panic(expected = "must be set")]
+fn from_env_panics_when_public_keys_var_is_unset() {
+    ImplTokenVerifierPasetoPublic::from_env("TEST_FROM_ENV_PUBLIC_KEYS_MISSING", "TEST_FROM_ENV_CIPHER_KEYS_MISSING");
+}
+
+#[test]
+fn id_cipher_ring_from_env_parses_hex_entries_and_keeps_first_as_active() {
+    let key_v1 = generate_cipher_key();
+    let key_v2 = generate_cipher_key();
+    let var_name = "TEST_FROM_ENV_CIPHER_KEYS_2";
+    unsafe {
+        std::env::set_var(
+            var_name,
+            format!("c1:{},c2:{}", hex::encode(key_v1), hex::encode(key_v2)),
+        );
+    }
+
+    let ring = TokenIdCipherRing::from_env(var_name);
+    assert_eq!(ring.active_cid(), "c1");
+    assert!(ring.cipher_for("c2").is_some());
 }
