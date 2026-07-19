@@ -6,11 +6,20 @@ edition = "2024"
 [dependencies]
 base64 = "0.22"
 chacha20poly1305 = "0.10"
+pasetors = { version = "0.7", optional = true }
 rand_core = { version = "0.6", features = ["getrandom"] }
 rusty_paseto = { version = "0.10.0", default-features = false, features = ["batteries_included", "v4_public"] }
 serde_json = "1.0"
 thiserror = "2.0"
 uuid = { version = "1", features = ["serde", "v7"] }
+
+[features]
+# Adds `ImplTokenVerifierPasetoPublic`, which verifies tokens using only the
+# issuer's public key. Services that only verify tokens issued elsewhere
+# (never their own) should enable this instead of holding a full
+# `PasetoKeyRing` keypair, which `ImplTokenVerifierPaseto` requires even for
+# verification.
+public-verify = ["dep:pasetors"]
 
 [dev-dependencies]
 ed25519-dalek = { version = "2", features = ["rand_core"] }
