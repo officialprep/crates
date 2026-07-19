@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use rusty_paseto::prelude::{Footer, Key, PasetoAsymmetricPublicKey, PasetoParser, Public, UntrustedToken, V4};
-use uuid::Uuid;
 
 use crate::error::TokenError;
+use crate::id_cipher::TokenIdCipher;
 use crate::key_ring::PasetoKeyRing;
 use crate::model::{ModelClaims, TokenType};
 use crate::V4_PUBLIC_PREFIX;
@@ -14,11 +14,12 @@ pub trait TokenVerifier: Send + Sync {
 
 pub struct ImplTokenVerifierPaseto {
     key_ring: Arc<PasetoKeyRing>,
+    id_cipher: Arc<TokenIdCipher>,
 }
 
 impl ImplTokenVerifierPaseto {
-    pub fn new(key_ring: Arc<PasetoKeyRing>) -> Self {
-        Self { key_ring }
+    pub fn new(key_ring: Arc<PasetoKeyRing>, id_cipher: Arc<TokenIdCipher>) -> Self {
+        Self { key_ring, id_cipher }
     }
 }
 
@@ -63,7 +64,7 @@ impl TokenVerifier for ImplTokenVerifierPaseto {
         let typ = claims_json["typ"]
             .as_str()
             .ok_or_else(|| TokenError::Verify("missing typ claim".to_string()))?;
-        let sub = Uuid::parse_str(sub).map_err(|err| TokenError::Verify(err.to_string()))?;
+        let sub = self.id_cipher.decrypt(sub)?;
         let token_type =
             TokenType::parse(typ).ok_or_else(|| TokenError::Verify(format!("unknown typ claim: {typ}")))?;
 

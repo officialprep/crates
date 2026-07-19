@@ -1,9 +1,11 @@
 pub mod error;
+pub mod id_cipher;
 pub mod key_ring;
 pub mod model;
 pub mod verifier;
 
 pub use error::TokenError;
+pub use id_cipher::TokenIdCipher;
 pub use key_ring::PasetoKeyRing;
 pub use model::{ModelClaims, TokenType};
 pub use verifier::{ImplTokenVerifierPaseto, TokenVerifier};
