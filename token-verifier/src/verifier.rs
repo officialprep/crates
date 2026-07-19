@@ -3,7 +3,7 @@ use std::sync::Arc;
 use rusty_paseto::prelude::{Footer, Key, PasetoAsymmetricPublicKey, PasetoParser, Public, UntrustedToken, V4};
 
 use crate::error::TokenError;
-use crate::id_cipher::TokenIdCipher;
+use crate::id_cipher_ring::TokenIdCipherRing;
 use crate::key_ring::PasetoKeyRing;
 use crate::model::{ModelClaims, TokenType};
 use crate::V4_PUBLIC_PREFIX;
@@ -14,12 +14,12 @@ pub trait TokenVerifier: Send + Sync {
 
 pub struct ImplTokenVerifierPaseto {
     key_ring: Arc<PasetoKeyRing>,
-    id_cipher: Arc<TokenIdCipher>,
+    id_cipher_ring: Arc<TokenIdCipherRing>,
 }
 
 impl ImplTokenVerifierPaseto {
-    pub fn new(key_ring: Arc<PasetoKeyRing>, id_cipher: Arc<TokenIdCipher>) -> Self {
-        Self { key_ring, id_cipher }
+    pub fn new(key_ring: Arc<PasetoKeyRing>, id_cipher_ring: Arc<TokenIdCipherRing>) -> Self {
+        Self { key_ring, id_cipher_ring }
     }
 }
 
@@ -64,7 +64,14 @@ impl TokenVerifier for ImplTokenVerifierPaseto {
         let typ = claims_json["typ"]
             .as_str()
             .ok_or_else(|| TokenError::Verify("missing typ claim".to_string()))?;
-        let sub = self.id_cipher.decrypt(sub)?;
+        let (cid, ciphertext) = sub
+            .split_once('.')
+            .ok_or_else(|| TokenError::Verify("malformed subject".to_string()))?;
+        let cipher = self
+            .id_cipher_ring
+            .cipher_for(cid)
+            .ok_or_else(|| TokenError::Verify(format!("unknown cipher id: {cid}")))?;
+        let sub = cipher.decrypt(ciphertext)?;
         let token_type =
             TokenType::parse(typ).ok_or_else(|| TokenError::Verify(format!("unknown typ claim: {typ}")))?;
 
