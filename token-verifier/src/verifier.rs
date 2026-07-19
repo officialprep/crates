@@ -60,9 +60,6 @@ impl TokenVerifier for ImplTokenVerifierPaseto {
         let sub = claims_json["sub"]
             .as_str()
             .ok_or_else(|| TokenError::Verify("missing sub claim".to_string()))?;
-        let email = claims_json["email"]
-            .as_str()
-            .ok_or_else(|| TokenError::Verify("missing email claim".to_string()))?;
         let typ = claims_json["typ"]
             .as_str()
             .ok_or_else(|| TokenError::Verify("missing typ claim".to_string()))?;
@@ -70,10 +67,6 @@ impl TokenVerifier for ImplTokenVerifierPaseto {
         let token_type =
             TokenType::parse(typ).ok_or_else(|| TokenError::Verify(format!("unknown typ claim: {typ}")))?;
 
-        Ok(ModelClaims {
-            sub,
-            email: email.to_string(),
-            token_type,
-        })
+        Ok(ModelClaims { sub, token_type })
     }
 }

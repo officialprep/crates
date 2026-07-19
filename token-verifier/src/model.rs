@@ -25,6 +25,5 @@ impl TokenType {
 
 pub struct ModelClaims {
     pub sub: Uuid,
-    pub email: String,
     pub token_type: TokenType,
 }

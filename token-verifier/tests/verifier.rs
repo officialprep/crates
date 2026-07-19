@@ -10,13 +10,11 @@ fn generate_key() -> Key<64> {
     Key::<64>::from(signing_key.to_keypair_bytes())
 }
 
-fn issue_token(key: &Key<64>, kid: &str, sub: Uuid, email: &str, typ: &str) -> String {
+fn issue_token(key: &Key<64>, kid: &str, sub: Uuid, typ: &str) -> String {
     let private_key = PasetoAsymmetricPrivateKey::<V4, Public>::try_from(key.as_slice()).unwrap();
     let footer = serde_json::json!({ "kid": kid }).to_string();
     PasetoBuilder::<V4, Public>::default()
         .subject(&sub.to_string())
-        .claim("email", email)
-        .unwrap()
         .claim("typ", typ)
         .unwrap()
         .set_footer(Footer::from(footer.as_str()))
@@ -33,11 +31,10 @@ fn verifies_a_correctly_signed_access_token() {
     let verifier = ImplTokenVerifierPaseto::new(ring);
 
     let sub = Uuid::now_v7();
-    let token = issue_token(&key, "v1", sub, "user@example.com", "access");
+    let token = issue_token(&key, "v1", sub, "access");
 
     let claims = verifier.verify(&token).expect("token should verify");
     assert_eq!(claims.sub, sub);
-    assert_eq!(claims.email, "user@example.com");
     assert_eq!(claims.token_type, TokenType::Access);
 }
 
@@ -49,7 +46,7 @@ fn verifies_a_token_with_the_v4_public_prefix_stripped() {
     let ring = Arc::new(PasetoKeyRing::new("v1".to_string(), keys));
     let verifier = ImplTokenVerifierPaseto::new(ring);
 
-    let token = issue_token(&key, "v1", Uuid::now_v7(), "user@example.com", "refresh");
+    let token = issue_token(&key, "v1", Uuid::now_v7(), "refresh");
     let trimmed = token.strip_prefix("v4.public.").unwrap();
 
     let claims = verifier.verify(trimmed).expect("prefix-stripped token should still verify");
@@ -59,7 +56,7 @@ fn verifies_a_token_with_the_v4_public_prefix_stripped() {
 #[test]
 fn rejects_a_token_signed_by_an_unknown_key_id() {
     let signing_key = generate_key();
-    let token = issue_token(&signing_key, "v1", Uuid::now_v7(), "user@example.com", "access");
+    let token = issue_token(&signing_key, "v1", Uuid::now_v7(), "access");
 
     let verifying_ring = Arc::new(PasetoKeyRing::new(
         "v2".to_string(),
@@ -80,6 +77,6 @@ fn old_key_tokens_still_verify_after_rotation() {
     let ring = Arc::new(PasetoKeyRing::new("v2".to_string(), keys));
     let verifier = ImplTokenVerifierPaseto::new(ring);
 
-    let old_token = issue_token(&key_v1, "v1", Uuid::now_v7(), "user@example.com", "access");
+    let old_token = issue_token(&key_v1, "v1", Uuid::now_v7(), "access");
     verifier.verify(&old_token).expect("token signed with a retired key must still verify");
 }
